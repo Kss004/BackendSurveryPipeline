@@ -15,7 +15,6 @@ import json
 
 from services.na_handler import NAHandler
 
-# Load environment variables
 load_dotenv()
 
 app = FastAPI(
@@ -24,7 +23,6 @@ app = FastAPI(
     version="4.0-dynamic"
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -751,35 +749,7 @@ llm_analyzer = PureLLMAnalyzer(chunk_size=1000)
 @app.get("/")
 async def root():
     return {
-        "message": "Survey Analysis API v4.0 - Pure LLM-Powered Dynamic Analysis",
-        "description": "Truly dynamic analysis with LLM-generated topics and user customization",
-        "philosophy": "No hardcoded topics - everything is dynamically generated based on survey content",
-        "endpoints": {
-            "data_processing": "POST /analyze/process - Upload and process survey data (supports chunk_size parameter)",
-            "topic_generation": "GET /analyze/topics - Generate analysis topics (with optional user additions)",
-            "comprehensive_analysis": "GET /analyze/comprehensive - Complete analysis of all topics"
-        },
-        "features": {
-            "pure_llm_analysis": "100% LLM-powered with no hardcoded assumptions",
-            "hierarchical_chunking": "Scalable processing with 10% dataset size chunks (min 100)",
-            "custom_chunk_sizes": "Override automatic chunk size calculation when needed",
-            "dynamic_topics": "Topics generated based on actual survey content",
-            "user_customization": "Users can add their own analysis topics",
-            "adaptive_insights": "Analysis adapts to any survey type automatically",
-            "actionable_recommendations": "LLM generates specific recommendations"
-        },
-        "workflow": [
-            "1. POST /analyze/process - Upload your survey data (optional: chunk_size parameter)",
-            "2. GET /analyze/topics?additional_topics=topic1,topic2 - Generate/customize topics",
-            "3. GET /analyze/comprehensive - Get complete analysis"
-        ],
-        "chunking_strategy": {
-            "small_datasets": "< 100 responses: Direct analysis (no chunking)",
-            "large_datasets": ">= 100 responses: Hierarchical chunking",
-            "automatic_chunk_size": "10% of dataset size (minimum 100, rounded to nearest 100)",
-            "examples": "1000 responses → 100 chunk size, 10000 responses → 1000 chunk size",
-            "custom_override": "Use chunk_size parameter to override automatic calculation"
-        }
+        "LLM Based Analysis"
     }
 
 
