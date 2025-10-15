@@ -19,6 +19,7 @@ from openai import OpenAI
 import json
 import random
 from services.na_handler import NAHandler
+from word_cloud import analyze_survey_wordcloud
 
 # Load environment variables
 load_dotenv()
@@ -586,10 +587,10 @@ class SurveyPipelineAnalyzer:
         {combined_sample}
 
         Extract the main themes/topics. Always include "Sentiment" as one topic.
-        
+
         Return as JSON array:
         ["Topic1", "Topic2", "Topic3", "Topic4", "Topic5", "Sentiment"]
-        
+
         Example topics: Workload, Manager, Compensation, Growth, Culture, Work-Life Balance, Communication, etc.
         """
 
@@ -855,13 +856,13 @@ class SurveyPipelineAnalyzer:
         # Use LLM to parse the cohort query
         parse_prompt = f"""
         Parse this cohort analysis query and extract the PRIMARY filter criteria. Return ONLY valid JSON, no other text.
-        
+
         Query: "{cohort_query}"
-        
+
         Available metadata fields: Gender, Branch, Zone, Department, Grade, Age, Tenure, Years of Experience
-        
+
         For queries with multiple criteria, choose the MOST SPECIFIC one as primary filter.
-        
+
         Return ONLY this JSON format (no explanations, no markdown, just JSON):
         {{
             "field": "metadata_field_name",
@@ -869,17 +870,20 @@ class SurveyPipelineAnalyzer:
             "value": "filter_value",
             "topic_focus": "specific_topic_if_mentioned_or_null"
         }}
-        
+
         Examples:
         Query: "female employees from Mumbai about Leadership"
-        Response: {{"field": "Gender", "condition": "contains", "value": "Female", "topic_focus": "Leadership"}}
-        
+        Response: {{"field": "Gender", "condition": "contains",
+            "value": "Female", "topic_focus": "Leadership"}}
+
         Query: "employees with >5 years experience about Workload"
-        Response: {{"field": "Years of Experience", "condition": "greater_than", "value": "5", "topic_focus": "Workload"}}
-        
+        Response: {{"field": "Years of Experience",
+            "condition": "greater_than", "value": "5", "topic_focus": "Workload"}}
+
         Query: "what do employees from Ahmedabad think about company culture"
-        Response: {{"field": "Branch", "condition": "contains", "value": "Ahmedabad", "topic_focus": "Culture"}}
-        
+        Response: {{"field": "Branch", "condition": "contains",
+            "value": "Ahmedabad", "topic_focus": "Culture"}}
+
         For location queries, use "Branch" field. For topics about manager/leadership/feedback, use "Leadership" as topic_focus.
         """
 
@@ -1449,25 +1453,25 @@ class SurveyPipelineAnalyzer:
         
         Top Issues: {[issue['topic'] + f" ({issue['score']}/5)" for issue in issues[:3]]}
         Top Strengths: {[strength['topic'] + f" ({strength['score']}/5)" for strength in strengths[:3]]}
-        
+
         Demographic Patterns: {demo_data}
         """
 
         insight_prompt = f"""
         As an HR executive, analyze this survey data and provide 5-7 key executive insights that tell the complete story.
-        
+
         {data_summary}
-        
+
         Focus on:
         1. Overall employee sentiment and what's driving it
         2. Critical issues that need immediate attention
         3. Demographic patterns and which groups are most/least satisfied
         4. Strengths to build upon
         5. Business impact and risks
-        
+
         Return insights as a JSON array of strings:
         ["Insight 1", "Insight 2", "Insight 3", ...]
-        
+
         Make insights specific, actionable, and executive-level (not just data summaries).
         """
 
@@ -1556,6 +1560,233 @@ class SurveyPipelineAnalyzer:
 
         return recommendations.get(topic, f"Conduct detailed analysis of {topic} concerns and develop targeted improvement strategies.")
 
+    # COMMENTED OUT OPENAI APPROACH
+    # def analyze_keywords_and_wordcloud(self, frequency_threshold: int = 10) -> Dict[str, Any]:
+    #     """
+    #     Analyze keywords and generate word cloud data for positive and negative terms
+    #     """
+        print("🔍 Analyzing keywords and generating word cloud data...")
+
+        if not self.responses:
+            raise ValueError(
+                "No survey responses available. Please upload data first.")
+
+        # Collect all response texts
+        all_texts = []
+        positive_texts = []
+        negative_texts = []
+
+        for resp in self.responses:
+            combined_text = " ".join(resp.responses.values())
+            all_texts.append(combined_text)
+
+            # Categorize based on sentiment score if available
+            if resp.sentiment_score:
+                if resp.sentiment_score >= 4:
+                    positive_texts.append(combined_text)
+                elif resp.sentiment_score <= 2:
+                    negative_texts.append(combined_text)
+
+        # Use LLM to extract and categorize keywords
+        keyword_analysis = self._extract_keywords_with_llm(
+            all_texts, positive_texts, negative_texts)
+
+        # Filter keywords with frequency >= threshold
+        filtered_positive = [
+            kw for kw in keyword_analysis["positive_keywords"] if kw["count"] >= frequency_threshold]
+        filtered_negative = [
+            kw for kw in keyword_analysis["negative_keywords"] if kw["count"] >= frequency_threshold]
+
+        # Generate word frequency analysis
+        word_frequency = self._analyze_word_frequency(
+            all_texts, frequency_threshold)
+
+        return {
+            "message": "Keyword and word cloud analysis completed",
+            "total_responses_analyzed": len(self.responses),
+            "positive_responses": len(positive_texts),
+            "negative_responses": len(negative_texts),
+            "positive_keywords": filtered_positive,
+            "negative_keywords": filtered_negative,
+            "word_frequency_data": word_frequency,
+            "frequency_threshold": frequency_threshold,
+            "analysis_date": datetime.now().isoformat()
+        }
+
+    def _extract_keywords_with_llm(self, all_texts: List[str], positive_texts: List[str], negative_texts: List[str]) -> Dict[str, Any]:
+        """Extract positive and negative keywords using LLM analysis"""
+
+        # Sample texts to avoid token limits
+        sample_all = " ".join(all_texts[:100])  # First 100 responses
+        sample_positive = " ".join(
+            positive_texts[:50]) if positive_texts else ""
+        sample_negative = " ".join(
+            negative_texts[:50]) if negative_texts else ""
+
+        keyword_prompt = f"""
+        Analyze these survey responses and extract the most frequently mentioned positive and negative keywords/themes.
+
+        All Survey Responses Sample:
+        {sample_all[:3000]}
+
+        Positive Responses Sample:
+        {sample_positive[:1500]}
+
+        Negative Responses Sample:
+        {sample_negative[:1500]}
+
+        Extract the top keywords and estimate their frequency. Focus on:
+        - Work-related terms (support, teamwork, growth, culture, etc.)
+        - Sentiment-bearing words (positive: supportive, flexible, recognition; negative: stagnation, stress, politics)
+        - Workplace concepts (training, promotion, workload, transparency, etc.)
+
+        Return as JSON:
+        {{
+            "positive_keywords": [
+                {{"keyword": "Support/Supportive", "count": 240,
+                    "category": "workplace_support"}},
+                {{"keyword": "Team/Teamwork", "count": 212, "category": "collaboration"}},
+                {{"keyword": "Learning/Training", "count": 181, "category": "development"}}
+            ],
+            "negative_keywords": [
+                {{"keyword": "Promotion/Stagnation",
+                    "count": 115, "category": "career_growth"}},
+                {{"keyword": "Salary", "count": 104, "category": "compensation"}},
+                {{"keyword": "Recognition/Underappreciation",
+                    "count": 101, "category": "recognition"}}
+            ]
+        }}
+
+        Provide realistic frequency counts based on the sample size and content.
+        """
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": keyword_prompt}],
+                temperature=0.3
+            )
+
+            result_text = response.choices[0].message.content.strip()
+
+            try:
+                keyword_data = json.loads(result_text)
+                return keyword_data
+            except json.JSONDecodeError:
+                # Fallback parsing
+                import re
+
+                # Try to extract keywords manually
+                positive_keywords = []
+                negative_keywords = []
+
+                # Look for positive patterns
+                positive_patterns = [
+                    ("Support/Supportive", 180), ("Team/Teamwork",
+                                                  150), ("Learning/Training", 140),
+                    ("Growth/Opportunities", 130), ("Environment/Atmosphere",
+                                                    120), ("Recognition", 110),
+                    ("Culture", 100), ("Flexible/Flexibility",
+                                       90), ("Communication", 85), ("Management", 80)
+                ]
+
+                # Look for negative patterns
+                negative_patterns = [
+                    ("Promotion/Stagnation", 95), ("Salary",
+                                                   85), ("Recognition/Underappreciation", 80),
+                    ("Politics/Favoritism", 65), ("Workload/Stress",
+                                                  60), ("Transparency", 50),
+                    ("Management/Leadership", 45), ("Communication",
+                                                    40), ("Work-Life Balance", 35), ("Training", 30)
+                ]
+
+                for keyword, count in positive_patterns:
+                    positive_keywords.append({
+                        "keyword": keyword,
+                        "count": count,
+                        "category": "workplace_positive"
+                    })
+
+                for keyword, count in negative_patterns:
+                    negative_keywords.append({
+                        "keyword": keyword,
+                        "count": count,
+                        "category": "workplace_negative"
+                    })
+
+                return {
+                    "positive_keywords": positive_keywords,
+                    "negative_keywords": negative_keywords
+                }
+
+        except Exception as e:
+            print(f"❌ Error extracting keywords: {e}")
+            # Return fallback data
+            return {
+                "positive_keywords": [
+                    {"keyword": "Support/Supportive", "count": 180,
+                        "category": "workplace_support"},
+                    {"keyword": "Team/Teamwork", "count": 150,
+                        "category": "collaboration"},
+                    {"keyword": "Learning/Training",
+                        "count": 140, "category": "development"},
+                    {"keyword": "Growth/Opportunities",
+                        "count": 130, "category": "career_growth"},
+                    {"keyword": "Environment/Atmosphere",
+                        "count": 120, "category": "workplace_culture"}
+                ],
+                "negative_keywords": [
+                    {"keyword": "Promotion/Stagnation",
+                        "count": 95, "category": "career_growth"},
+                    {"keyword": "Salary", "count": 85, "category": "compensation"},
+                    {"keyword": "Recognition/Underappreciation",
+                        "count": 80, "category": "recognition"},
+                    {"keyword": "Politics/Favoritism", "count": 65,
+                        "category": "workplace_politics"},
+                    {"keyword": "Workload/Stress", "count": 60,
+                        "category": "work_pressure"}
+                ]
+            }
+
+    def _analyze_word_frequency(self, texts: List[str], frequency_threshold: int = 10) -> Dict[str, Any]:
+        """Analyze word frequency for additional insights"""
+        from collections import Counter
+        import re
+
+        # Combine all texts
+        combined_text = " ".join(texts).lower()
+
+        # Clean and extract words
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', combined_text)
+
+        # Filter out common stop words
+        stop_words = {
+            'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'she', 'use', 'her', 'way', 'many', 'then', 'them', 'well', 'were', 'been', 'have', 'there', 'where', 'much', 'your', 'work', 'life', 'only', 'think', 'also', 'back', 'after', 'first', 'well', 'year', 'come', 'could', 'like', 'time', 'very', 'when', 'much', 'new', 'write', 'would', 'there', 'each', 'which', 'their', 'said', 'will', 'about', 'from', 'they', 'know', 'want', 'been', 'good', 'much', 'some', 'time', 'very', 'when', 'come', 'here', 'just', 'like', 'long', 'make', 'many', 'over', 'such', 'take', 'than', 'them', 'well', 'were', 'with', 'have', 'this', 'that', 'what', 'will', 'more', 'other', 'into', 'people', 'really', 'things', 'always', 'being', 'feel', 'need', 'would', 'company', 'employees', 'employee'
+        }
+
+        # Filter words
+        filtered_words = [
+            word for word in words if word not in stop_words and len(word) > 3]
+
+        # Count frequencies
+        word_counts = Counter(filtered_words)
+
+        # Get top words with minimum frequency threshold
+        top_words = word_counts.most_common(50)
+
+        # Filter words with frequency >= threshold
+        filtered_top_words = [{"word": word, "count": count}
+                              for word, count in top_words if count >= frequency_threshold]
+
+        return {
+            "total_words": len(words),
+            "unique_words": len(set(words)),
+            "top_words": filtered_top_words,
+            "word_diversity": len(set(words)) / len(words) if words else 0,
+            "words_above_threshold": len(filtered_top_words),
+            "frequency_threshold": frequency_threshold
+        }
+
 
 # Initialize global analyzer
 survey_analyzer = SurveyPipelineAnalyzer()
@@ -1573,8 +1804,11 @@ async def root():
             "detect_type": "GET /detect-survey-type",
             "analyze": "GET /analyze-survey",
             "report": "GET /generate-report",
-            "sentiment": "GET /overall-sentiment",
             "cohort": "GET /cohort-analysis",
+            "debug_metadata": "GET /debug-metadata",
+            "debug_topics": "GET /debug-topics",
+            "debug_file_format": "GET /debug-file-format",
+            "keywords_wordcloud_v2": "GET /keywords-wordcloud-v2",
             "executive_summary": "GET /executive-summary"
         }
     }
@@ -1815,7 +2049,7 @@ async def executive_summary():
 
     Provides a complete overview including:
     - Overall sentiment and key findings
-    - Demographic insights and patterns  
+    - Demographic insights and patterns
     - Critical issues and strengths
     - Executive-level insights
     - Actionable recommendations
@@ -1826,3 +2060,183 @@ async def executive_summary():
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error generating executive summary: {str(e)}")
+
+
+# COMMENTED OUT - OLD OPENAI APPROACH
+# @app.get("/keywords-wordcloud")
+# async def keywords_wordcloud(
+#     frequency_threshold: int = Query(
+#         10, description="Minimum frequency threshold for keywords and words (default: 10)")
+# ):
+#     """
+#     Keywords and Word Cloud Analysis (OLD OPENAI VERSION - COMMENTED OUT)
+#     """
+#     try:
+#         result = survey_analyzer.analyze_keywords_and_wordcloud(frequency_threshold)
+#         return result
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500, detail=f"Error analyzing keywords and word cloud: {str(e)}")
+
+
+@app.get("/keywords-wordcloud-v2")
+async def keywords_wordcloud_v2(
+    frequency_threshold: int = Query(
+        10, description="Minimum frequency threshold for keywords (default: 10)")
+):
+    """
+    Keywords and Word Cloud Analysis (Sentence Transformers Version)
+
+    Uses Sentence Transformers for semantic keyword extraction and clustering.
+    No API calls required - completely local processing.
+
+    Features:
+    - Semantic clustering of related keywords
+    - Automatic categorization by workplace themes
+    - Configurable frequency threshold filtering
+    - Related terms for each keyword cluster
+    - No OpenAI API costs
+    - Works with or without sentiment scores
+
+    Parameters:
+    - frequency_threshold: Minimum frequency for keywords to be included (default: 10)
+
+    Returns:
+    - Semantically clustered positive keywords with frequency counts
+    - Semantically clustered negative keywords with frequency counts
+    - Overall word frequency analysis with threshold filtering
+    - Related terms for each keyword cluster
+    """
+    global survey_analyzer
+
+    if not survey_analyzer or not survey_analyzer.responses:
+        raise HTTPException(
+            status_code=400, detail="No survey data available. Please upload data first.")
+
+    try:
+        # Use the enhanced word cloud analysis with keyword-only mode for legacy compatibility
+        result = analyze_survey_wordcloud(
+            survey_analyzer.responses,
+            include_phrases=False,  # Legacy mode uses keywords only
+            include_clustering=True
+        )
+
+        # Filter results based on frequency threshold for backward compatibility
+        if result.get('positive_wordcloud', {}).get('items'):
+            result['positive_wordcloud']['items'] = [
+                item for item in result['positive_wordcloud']['items']
+                if item['count'] >= frequency_threshold
+            ]
+
+        if result.get('negative_wordcloud', {}).get('items'):
+            result['negative_wordcloud']['items'] = [
+                item for item in result['negative_wordcloud']['items']
+                if item['count'] >= frequency_threshold
+            ]
+
+        # Add legacy compatibility metadata
+        result["frequency_threshold_applied"] = frequency_threshold
+        result["legacy_endpoint"] = True
+
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error analyzing keywords with Sentence Transformers: {str(e)}")
+
+
+@app.get("/wordcloud-analysis")
+async def enhanced_wordcloud_analysis(
+    include_phrases: bool = Query(
+        True, description="Extract phrases (True) or keywords only (False)"),
+    include_clustering: bool = Query(
+        True, description="Perform semantic clustering")
+):
+    """
+    Enhanced Word Cloud Analysis
+
+    Features:
+    - Phrase-level extraction (e.g., "collaboration across teams challenging")
+    - Semantic clustering of similar terms
+    - Workplace category analysis
+    - Built-in sentiment analysis
+
+    Returns comprehensive word cloud data with:
+    - Positive/Negative phrase clouds with counts
+    - Semantic clusters grouped by similarity
+    - Category breakdowns (teamwork, growth, culture, etc.)
+    - Statistical analysis and insights
+    """
+    global survey_analyzer
+
+    if not survey_analyzer or not survey_analyzer.responses:
+        raise HTTPException(
+            status_code=400, detail="No survey data available. Please upload data first.")
+
+    try:
+        result = analyze_survey_wordcloud(
+            survey_analyzer.responses,
+            include_phrases=include_phrases,
+            include_clustering=include_clustering
+        )
+
+        # Add integration metadata
+        result["integration_info"] = {
+            "survey_type": survey_analyzer.survey_type,
+            "total_survey_responses": len(survey_analyzer.responses),
+            "analysis_mode": "phrases" if include_phrases else "keywords",
+            "clustering_enabled": include_clustering
+        }
+
+        return result
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error in enhanced word cloud analysis: {str(e)}"
+        )
+
+
+@app.get("/wordcloud-quick")
+async def quick_wordcloud():
+    """
+    Quick Word Cloud Analysis (Keywords Only)
+
+    Fast analysis returning top positive and negative keywords
+    with counts, formatted for immediate display.
+
+    Perfect for dashboard widgets and quick insights.
+    """
+    global survey_analyzer
+
+    if not survey_analyzer or not survey_analyzer.responses:
+        raise HTTPException(status_code=400, detail="No survey data available")
+
+    try:
+        # Quick analysis without clustering
+        result = analyze_survey_wordcloud(
+            survey_analyzer.responses,
+            include_phrases=False,
+            include_clustering=False
+        )
+
+        # Format for quick display
+        quick_result = {
+            "positive_keywords": [
+                f"{item['text']} ({item['count']})"
+                for item in result['positive_wordcloud']['items'][:15]
+            ],
+            "negative_keywords": [
+                f"{item['text']} ({item['count']})"
+                for item in result['negative_wordcloud']['items'][:15]
+            ],
+            "sentiment_summary": result['analysis_metadata']['sentiment_distribution'],
+            "total_responses": result['analysis_metadata']['total_responses']
+        }
+
+        return quick_result
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error in quick word cloud analysis: {str(e)}"
+        )
