@@ -19,7 +19,7 @@ from openai import OpenAI
 import json
 import random
 from services.na_handler import NAHandler
-from word_cloud import analyze_survey_wordcloud
+from word_cloud import analyze_survey_wordcloud, enhanced_quick_wordcloud_analysis
 
 # Load environment variables
 load_dotenv()
@@ -1808,7 +1808,7 @@ async def root():
             "debug_metadata": "GET /debug-metadata",
             "debug_topics": "GET /debug-topics",
             "debug_file_format": "GET /debug-file-format",
-            "keywords_wordcloud_v2": "GET /keywords-wordcloud-v2",
+
             "executive_summary": "GET /executive-summary"
         }
     }
@@ -2079,71 +2079,6 @@ async def executive_summary():
 #             status_code=500, detail=f"Error analyzing keywords and word cloud: {str(e)}")
 
 
-@app.get("/keywords-wordcloud-v2")
-async def keywords_wordcloud_v2(
-    frequency_threshold: int = Query(
-        10, description="Minimum frequency threshold for keywords (default: 10)")
-):
-    """
-    Keywords and Word Cloud Analysis (Sentence Transformers Version)
-
-    Uses Sentence Transformers for semantic keyword extraction and clustering.
-    No API calls required - completely local processing.
-
-    Features:
-    - Semantic clustering of related keywords
-    - Automatic categorization by workplace themes
-    - Configurable frequency threshold filtering
-    - Related terms for each keyword cluster
-    - No OpenAI API costs
-    - Works with or without sentiment scores
-
-    Parameters:
-    - frequency_threshold: Minimum frequency for keywords to be included (default: 10)
-
-    Returns:
-    - Semantically clustered positive keywords with frequency counts
-    - Semantically clustered negative keywords with frequency counts
-    - Overall word frequency analysis with threshold filtering
-    - Related terms for each keyword cluster
-    """
-    global survey_analyzer
-
-    if not survey_analyzer or not survey_analyzer.responses:
-        raise HTTPException(
-            status_code=400, detail="No survey data available. Please upload data first.")
-
-    try:
-        # Use the enhanced word cloud analysis with keyword-only mode for legacy compatibility
-        result = analyze_survey_wordcloud(
-            survey_analyzer.responses,
-            include_phrases=False,  # Legacy mode uses keywords only
-            include_clustering=True
-        )
-
-        # Filter results based on frequency threshold for backward compatibility
-        if result.get('positive_wordcloud', {}).get('items'):
-            result['positive_wordcloud']['items'] = [
-                item for item in result['positive_wordcloud']['items']
-                if item['count'] >= frequency_threshold
-            ]
-
-        if result.get('negative_wordcloud', {}).get('items'):
-            result['negative_wordcloud']['items'] = [
-                item for item in result['negative_wordcloud']['items']
-                if item['count'] >= frequency_threshold
-            ]
-
-        # Add legacy compatibility metadata
-        result["frequency_threshold_applied"] = frequency_threshold
-        result["legacy_endpoint"] = True
-
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error analyzing keywords with Sentence Transformers: {str(e)}")
-
-
 @app.get("/wordcloud-analysis")
 async def enhanced_wordcloud_analysis(
     include_phrases: bool = Query(
@@ -2197,14 +2132,25 @@ async def enhanced_wordcloud_analysis(
 
 
 @app.get("/wordcloud-quick")
-async def quick_wordcloud():
+async def quick_wordcloud(
+    min_frequency: int = Query(
+        10, description="Minimum frequency threshold for words/phrases (default: 10)")
+):
     """
-    Quick Word Cloud Analysis (Keywords Only)
+    Enhanced Quick Word Cloud Analysis
 
-    Fast analysis returning top positive and negative keywords
-    with counts, formatted for immediate display.
+    Features:
+    - Top occurring words and phrases ranked by frequency (250 → 10+ mentions)
+    - Single words (unigrams) and two-word phrases (bigrams)
+    - Robust stopword filtering to remove common words (a, and, the, etc.)
+    - Positive/negative sentiment segregation
+    - Configurable minimum frequency threshold
+    - Fast analysis optimized for dashboards
 
-    Perfect for dashboard widgets and quick insights.
+    Returns:
+    - Ranked positive/negative words and bigrams with exact counts
+    - Frequency range from highest (e.g., 250) down to minimum threshold
+    - Clean results with stopwords filtered out
     """
     global survey_analyzer
 
@@ -2212,31 +2158,18 @@ async def quick_wordcloud():
         raise HTTPException(status_code=400, detail="No survey data available")
 
     try:
-        # Quick analysis without clustering
-        result = analyze_survey_wordcloud(
-            survey_analyzer.responses,
-            include_phrases=False,
-            include_clustering=False
-        )
+        # Extract all response texts
+        all_texts = []
+        for resp in survey_analyzer.responses:
+            combined_text = " ".join(resp.responses.values())
+            all_texts.append(combined_text)
 
-        # Format for quick display
-        quick_result = {
-            "positive_keywords": [
-                f"{item['text']} ({item['count']})"
-                for item in result['positive_wordcloud']['items'][:15]
-            ],
-            "negative_keywords": [
-                f"{item['text']} ({item['count']})"
-                for item in result['negative_wordcloud']['items'][:15]
-            ],
-            "sentiment_summary": result['analysis_metadata']['sentiment_distribution'],
-            "total_responses": result['analysis_metadata']['total_responses']
-        }
-
-        return quick_result
+        # Perform enhanced word and phrase analysis
+        result = enhanced_quick_wordcloud_analysis(all_texts, min_frequency)
+        return result
 
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error in quick word cloud analysis: {str(e)}"
+            detail=f"Error in enhanced quick word cloud analysis: {str(e)}"
         )

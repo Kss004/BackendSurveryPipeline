@@ -726,6 +726,270 @@ class ConfigurableWordCloudAnalyzer:
 
 # --- Integration Functions ---
 
+def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: int = 10) -> Dict[str, Any]:
+    """
+    Enhanced quick word cloud analysis with robust stopword filtering and accurate sentiment analysis.
+
+    Features:
+    - Extracts single words (unigrams) and two-word phrases (bigrams)
+    - Comprehensive stopword filtering
+    - Accurate sentiment-based segregation
+    - Frequency-based ranking from highest to minimum threshold
+    - Optimized for dashboard display
+
+    Args:
+        response_texts: List of survey response texts
+        min_frequency: Minimum frequency threshold (default: 10)
+
+    Returns:
+        Dictionary with positive/negative words and bigrams ranked by frequency
+    """
+    from collections import Counter
+    import re
+
+    print(
+        f"🔍 Starting enhanced quick analysis with min_frequency={min_frequency}")
+
+    # Comprehensive stopwords list - much more robust
+    COMPREHENSIVE_STOPWORDS = {
+        # Basic English stopwords
+        'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'has', 'he', 'in', 'is', 'it',
+        'its', 'of', 'on', 'that', 'the', 'to', 'was', 'will', 'with', 'would', 'could', 'should',
+        'have', 'had', 'has', 'do', 'does', 'did', 'can', 'may', 'might', 'must', 'shall', 'should',
+        'will', 'would', 'could', 'ought', 'need', 'dare', 'used', 'am', 'been', 'being', 'were',
+
+        # Pronouns and determiners
+        'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 'yours',
+        'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself',
+        'it', 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves',
+
+        # Common words that add no meaning
+        'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom', 'whose', 'where', 'when',
+        'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+        'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'now',
+        'then', 'here', 'there', 'up', 'down', 'out', 'off', 'over', 'under', 'again', 'further',
+        'once', 'during', 'before', 'after', 'above', 'below', 'between', 'through', 'into', 'onto',
+
+        # Filler and connecting words
+        'well', 'also', 'but', 'or', 'if', 'because', 'while', 'until', 'since', 'although', 'though',
+        'however', 'therefore', 'moreover', 'furthermore', 'nevertheless', 'nonetheless', 'meanwhile',
+        'otherwise', 'instead', 'besides', 'additionally', 'consequently', 'thus', 'hence', 'still',
+        'yet', 'already', 'always', 'never', 'sometimes', 'often', 'usually', 'frequently', 'rarely',
+        'occasionally', 'almost', 'quite', 'rather', 'pretty', 'fairly', 'somewhat', 'really', 'actually',
+
+        # Survey-specific stopwords
+        'survey', 'question', 'response', 'answer', 'think', 'feel', 'believe', 'say', 'said', 'tell',
+        'told', 'ask', 'asked', 'know', 'knew', 'see', 'saw', 'look', 'looked', 'find', 'found',
+        'get', 'got', 'give', 'gave', 'take', 'took', 'make', 'made', 'come', 'came', 'go', 'went',
+
+        # Generic workplace terms (too common to be meaningful)
+        'company', 'organization', 'workplace', 'work', 'job', 'role', 'position', 'employee', 'employees',
+        'people', 'person', 'individual', 'staff', 'member', 'members', 'team', 'teams', 'department',
+        'departments', 'manager', 'managers', 'management', 'supervisor', 'supervisors', 'boss',
+
+        # Time and frequency words
+        'time', 'times', 'day', 'days', 'week', 'weeks', 'month', 'months', 'year', 'years',
+        'daily', 'weekly', 'monthly', 'yearly', 'today', 'yesterday', 'tomorrow', 'morning',
+        'afternoon', 'evening', 'night', 'weekend', 'weekday',
+
+        # Quantity and degree words
+        'much', 'many', 'little', 'few', 'several', 'various', 'different', 'same', 'similar',
+        'like', 'unlike', 'big', 'small', 'large', 'huge', 'tiny', 'high', 'low', 'long', 'short',
+        'new', 'old', 'young', 'first', 'last', 'next', 'previous', 'another', 'every', 'each',
+
+        # Common verbs that don't add meaning
+        'want', 'wanted', 'need', 'needed', 'try', 'tried', 'help', 'helped', 'start', 'started',
+        'stop', 'stopped', 'continue', 'continued', 'keep', 'kept', 'put', 'puts', 'let', 'lets',
+        'seem', 'seems', 'seemed', 'become', 'became', 'turn', 'turned', 'change', 'changed',
+
+        # Words that appeared in your problematic results
+        'about', 'across', 'big', 'out', 'see', 'here', 'there', 'well', 'provided', 'changes'
+    }
+
+    # Enhanced sentiment classification with workplace context
+    POSITIVE_INDICATORS = {
+        'excellent', 'great', 'good', 'amazing', 'wonderful', 'fantastic', 'outstanding', 'superb',
+        'brilliant', 'awesome', 'perfect', 'love', 'like', 'enjoy', 'appreciate', 'satisfied',
+        'happy', 'pleased', 'delighted', 'thrilled', 'excited', 'motivated', 'inspired',
+        'supportive', 'helpful', 'friendly', 'positive', 'strong', 'effective',
+        'efficient', 'productive', 'successful', 'beneficial', 'valuable', 'useful', 'clear',
+        'transparent', 'open', 'flexible', 'innovative', 'creative', 'professional', 'skilled',
+        'experienced', 'knowledgeable', 'competent', 'reliable', 'trustworthy', 'respectful',
+        'growth', 'development', 'improvement', 'progress', 'advancement', 'success', 'achievement',
+        'opportunities', 'potential', 'possibilities', 'prospects', 'future', 'career', 'promotion',
+        'learning', 'education', 'skills', 'knowledge', 'expertise', 'mentoring',
+        'recognition', 'appreciation', 'valued', 'acknowledged', 'rewarded', 'praised', 'celebrated'
+    }
+
+    NEGATIVE_INDICATORS = {
+        'bad', 'poor', 'terrible', 'awful', 'horrible', 'disappointing', 'frustrating', 'annoying',
+        'difficult', 'challenging', 'hard', 'tough', 'struggle', 'problem', 'issue', 'concern',
+        'worry', 'stress', 'pressure', 'overwhelmed', 'burned', 'exhausted', 'tired', 'lack',
+        'missing', 'absent', 'insufficient', 'inadequate', 'limited', 'restricted', 'constrained',
+        'unclear', 'confusing', 'complicated', 'complex', 'messy', 'disorganized', 'chaotic',
+        'unfair', 'biased', 'discriminatory', 'toxic', 'negative', 'hostile', 'aggressive',
+        'rude', 'disrespectful', 'unprofessional', 'incompetent', 'unreliable', 'untrustworthy',
+        'stagnant', 'stagnation', 'boring', 'monotonous', 'repetitive', 'outdated', 'obsolete',
+        'micromanagement', 'micromanaging', 'politics', 'favoritism', 'nepotism', 'corruption',
+        'burnout', 'turnover', 'quit', 'leave', 'resign', 'fire', 'fired', 'layoff', 'downsizing',
+
+        # Words that were incorrectly classified as positive
+        'nonexistent', 'insufficient', 'hard', 'impacts', 'loop', 'challenging'
+    }
+
+    def clean_and_tokenize(text):
+        """Clean text and extract meaningful tokens"""
+        if not text or not text.strip():
+            return []
+
+        # Convert to lowercase and remove punctuation
+        clean_text = re.sub(r'[^\w\s]', ' ', text.lower())
+        # Split into words and filter
+        words = [word.strip() for word in clean_text.split() if word.strip()]
+
+        # Filter out stopwords, short words, and non-alphabetic words
+        meaningful_words = [
+            word for word in words
+            if (word not in COMPREHENSIVE_STOPWORDS and
+                len(word) > 2 and
+                word.isalpha() and
+                not word.isdigit())
+        ]
+
+        return meaningful_words
+
+    # Neutral workplace terms that depend on context
+    NEUTRAL_WORKPLACE_TERMS = {
+        'collaboration', 'training', 'communication', 'feedback', 'meetings', 'processes',
+        'procedures', 'policies', 'systems', 'tools', 'resources', 'budget', 'planning',
+        'strategy', 'goals', 'objectives', 'targets', 'metrics', 'performance', 'results'
+    }
+
+    def classify_word_sentiment(word):
+        """Classify individual word sentiment"""
+        if word in NEGATIVE_INDICATORS:
+            return 'negative'
+        elif word in POSITIVE_INDICATORS:
+            return 'positive'
+        elif word in NEUTRAL_WORKPLACE_TERMS:
+            return 'neutral'  # These need context to determine sentiment
+        else:
+            return 'neutral'
+
+    def classify_phrase_sentiment(phrase):
+        """Classify phrase sentiment based on constituent words and context"""
+        words = phrase.split()
+        positive_count = sum(
+            1 for word in words if word in POSITIVE_INDICATORS)
+        negative_count = sum(
+            1 for word in words if word in NEGATIVE_INDICATORS)
+        neutral_workplace_count = sum(
+            1 for word in words if word in NEUTRAL_WORKPLACE_TERMS)
+
+        # If phrase contains negative words, it's negative
+        if negative_count > 0:
+            return 'negative'
+        # If phrase contains positive words and no negative, it's positive
+        elif positive_count > 0:
+            return 'positive'
+        # If phrase is only neutral workplace terms, skip it (needs more context)
+        elif neutral_workplace_count == len(words):
+            return 'neutral'
+        else:
+            return 'neutral'
+
+    # Initialize counters
+    positive_unigrams = Counter()
+    negative_unigrams = Counter()
+    positive_bigrams = Counter()
+    negative_bigrams = Counter()
+
+    # Process each response
+    processed_responses = 0
+    for text in response_texts:
+        if not text or not text.strip():
+            continue
+
+        # Clean and tokenize
+        words = clean_and_tokenize(text)
+        if len(words) < 2:  # Skip responses with too few meaningful words
+            continue
+
+        processed_responses += 1
+
+        # Extract unigrams (single words) with individual word sentiment classification
+        for word in words:
+            word_sentiment = classify_word_sentiment(word)
+            if word_sentiment == 'positive':
+                positive_unigrams[word] += 1
+            elif word_sentiment == 'negative':
+                negative_unigrams[word] += 1
+            # Skip neutral words
+
+        # Extract bigrams (two-word phrases) with phrase sentiment classification
+        for i in range(len(words) - 1):
+            bigram = f"{words[i]} {words[i+1]}"
+            phrase_sentiment = classify_phrase_sentiment(bigram)
+            if phrase_sentiment == 'positive':
+                positive_bigrams[bigram] += 1
+            elif phrase_sentiment == 'negative':
+                negative_bigrams[bigram] += 1
+            # Skip neutral phrases
+
+    def format_results(unigrams, bigrams, min_freq):
+        """Filter by frequency and format results"""
+        # Filter and sort unigrams
+        filtered_unigrams = [(word, count) for word,
+                             count in unigrams.items() if count >= min_freq]
+        sorted_unigrams = sorted(
+            filtered_unigrams, key=lambda x: x[1], reverse=True)
+
+        # Filter and sort bigrams
+        filtered_bigrams = [(phrase, count) for phrase,
+                            count in bigrams.items() if count >= min_freq]
+        sorted_bigrams = sorted(
+            filtered_bigrams, key=lambda x: x[1], reverse=True)
+
+        return {
+            "words": [{"text": word, "count": count} for word, count in sorted_unigrams],
+            "phrases": [{"text": phrase, "count": count} for phrase, count in sorted_bigrams],
+            "total_words": len(sorted_unigrams),
+            "total_phrases": len(sorted_bigrams)
+        }
+
+    # Generate results
+    positive_results = format_results(
+        positive_unigrams, positive_bigrams, min_frequency)
+    negative_results = format_results(
+        negative_unigrams, negative_bigrams, min_frequency)
+
+    result = {
+        "message": "Enhanced quick word cloud analysis completed",
+        "analysis_metadata": {
+            "total_responses": len(response_texts),
+            "processed_responses": processed_responses,
+            "min_frequency_threshold": min_frequency,
+            "stopwords_filtered": len(COMPREHENSIVE_STOPWORDS),
+            "analysis_type": "unigrams_and_bigrams"
+        },
+        "positive_analysis": positive_results,
+        "negative_analysis": negative_results,
+        "summary": {
+            "top_positive_word": positive_results["words"][0] if positive_results["words"] else None,
+            "top_negative_word": negative_results["words"][0] if negative_results["words"] else None,
+            "top_positive_phrase": positive_results["phrases"][0] if positive_results["phrases"] else None,
+            "top_negative_phrase": negative_results["phrases"][0] if negative_results["phrases"] else None
+        }
+    }
+
+    print(
+        f"✅ Analysis complete: {positive_results['total_words']} positive words, {negative_results['total_words']} negative words")
+    print(
+        f"✅ Phrases found: {positive_results['total_phrases']} positive, {negative_results['total_phrases']} negative")
+
+    return result
+
+
 def analyze_survey_wordcloud(survey_responses: Union[List[str], List[Dict]],
                              include_phrases: bool = True,
                              include_clustering: bool = True) -> Dict[str, Any]:

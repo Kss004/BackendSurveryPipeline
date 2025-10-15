@@ -297,8 +297,6 @@ git clone https://github.com/Kss004/BackendSurveryPipeline
 ```bash
 pip install -r requirements.txt
 
-# For enhanced word cloud features (optional but recommended)
-python -m spacy download en_core_web_sm
 ```
 
 ### **3. Environment Configuration**
@@ -311,7 +309,7 @@ LLM_MODEL=gpt-4o-mini (Optional)
 
 ### **4. Run Application**
 ```bash
-uvicorn main_4_cohort:app      
+uvicorn main_4_cohort:app --reload
 ```
 
 ### **5. Access API Documentation**
@@ -329,7 +327,7 @@ Visit: `http://localhost:8000/docs`
 - `GET /wordcloud-analysis` - Advanced phrase extraction with clustering
 - `GET /wordcloud-quick` - Fast dashboard-ready word cloud
 - `POST /wordcloud-config` - Create custom analysis configurations
-- `GET /keywords-wordcloud-v2` - Legacy word cloud endpoint
+
 
 ### **Cohort Analysis**
 - `POST /cohort-analysis` - Natural language cohort queries
