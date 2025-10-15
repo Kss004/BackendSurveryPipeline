@@ -385,6 +385,7 @@ flowchart TD
     F --> G
     G --> H[Score Each Response 1-5]
     H --> I[Generate Topic Insights]
+```
 
 ## 📊 Performance & Scalability
 
@@ -430,13 +431,7 @@ flowchart TD
 - Gradual migration path available
 - No breaking changes to existing integrations
 
-## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## 📄 License
 
@@ -448,7 +443,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Issues**: Report bugs and feature requests via GitHub Issues
 - **Performance**: For large-scale deployments, consider dedicated infrastructure
 
----
-
-**Built with ❤️ for better employee feedback analysis**
-```
