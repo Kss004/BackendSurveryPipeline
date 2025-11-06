@@ -1149,3 +1149,4 @@ if __name__ == "__main__":
     # Test 3: Custom configuration (removed - no longer supported)
 
     print("\n🎉 All tests completed successfully!")
+

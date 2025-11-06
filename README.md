@@ -304,7 +304,7 @@ Create `.env` file:
 ```
 OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 EMBEDDING_MODEL= EMBEDDING_MODEL (Optional)
-LLM_MODEL=gpt-4o-mini (Optional)
+LLM_MODEL=gpt-4.1-mini (Optional)
 ```
 
 ### **4. Run Application**
@@ -376,7 +376,7 @@ flowchart LR
 ### **Topic Extraction Process**
 ```mermaid
 flowchart TD
-    A[Sample 30 Random Responses] --> B[Send to GPT-4]
+    A[Sample 30 Random Responses] --> B[Send to GPT-4.1-mini]
     B --> C[Extract 5-6 Key Topics]
     C --> D{Topics Valid?}
     D -->|Yes| E[Use Extracted Topics]

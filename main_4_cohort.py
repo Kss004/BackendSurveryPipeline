@@ -19,7 +19,7 @@ from openai import OpenAI
 import json
 import random
 from services.na_handler import NAHandler
-from word_cloud import dynamic_quick_wordcloud_analysis
+from services.word_cloud import dynamic_quick_wordcloud_analysis
 
 # Load environment variables
 load_dotenv()
@@ -82,6 +82,10 @@ class SurveyPipelineAnalyzer:
     def __init__(self, openai_api_key: Optional[str] = None):
         self.client = OpenAI(
             api_key=openai_api_key or os.getenv('OPENAI_API_KEY'))
+
+        # Get model from environment variable
+        self.llm_model = os.getenv('LLM_MODEL', 'gpt-4.1-mini')
+
         self.na_handler = NAHandler()
 
         # Data storage
@@ -530,7 +534,7 @@ class SurveyPipelineAnalyzer:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model=self.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3
             )
@@ -596,7 +600,7 @@ class SurveyPipelineAnalyzer:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model=self.llm_model,
                 messages=[{"role": "user", "content": topic_extraction_prompt}],
                 temperature=0.3
             )
@@ -659,7 +663,7 @@ class SurveyPipelineAnalyzer:
                 """
 
                 llm_response = self.client.chat.completions.create(
-                    model="gpt-4",
+                    model=self.llm_model,
                     messages=[{"role": "user", "content": batch_prompt}],
                     temperature=0.3
                 )
@@ -889,7 +893,7 @@ class SurveyPipelineAnalyzer:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model=self.llm_model,
                 messages=[{"role": "user", "content": parse_prompt}],
                 temperature=0.3
             )
@@ -1477,7 +1481,7 @@ class SurveyPipelineAnalyzer:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-mini",
                 messages=[{"role": "user", "content": insight_prompt}],
                 temperature=0.3
             )
@@ -1662,7 +1666,7 @@ class SurveyPipelineAnalyzer:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-mini",
                 messages=[{"role": "user", "content": keyword_prompt}],
                 temperature=0.3
             )
@@ -2127,7 +2131,8 @@ async def quick_wordcloud(
                     all_texts.append(" ".join(parts))
         else:
             for resp in survey_analyzer.responses:
-                combined_text = " ".join([v for v in resp.responses.values() if isinstance(v, str)])
+                combined_text = " ".join(
+                    [v for v in resp.responses.values() if isinstance(v, str)])
                 all_texts.append(combined_text)
 
         # Perform enhanced word and phrase analysis (Sentence Transformers-backed)

@@ -134,7 +134,7 @@ Output **only** valid JSON:
 
         async with self.semaphore:
             raw = await self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
                 max_tokens=450,
