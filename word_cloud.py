@@ -726,14 +726,14 @@ class ConfigurableWordCloudAnalyzer:
 
 # --- Integration Functions ---
 
-def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: int = 10) -> Dict[str, Any]:
+def dynamic_quick_wordcloud_analysis(response_texts: List[str], min_frequency: int = 10, include_structured_terms: bool = False) -> Dict[str, Any]:
     """
-    Enhanced quick word cloud analysis with robust stopword filtering and accurate sentiment analysis.
+    AI-powered quick word cloud analysis using Sentence Transformers for dynamic sentiment classification.
 
     Features:
     - Extracts single words (unigrams) and two-word phrases (bigrams)
+    - Dynamic sentiment classification using Sentence Transformers
     - Comprehensive stopword filtering
-    - Accurate sentiment-based segregation
     - Frequency-based ranking from highest to minimum threshold
     - Optimized for dashboard display
 
@@ -748,7 +748,41 @@ def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: 
     import re
 
     print(
-        f"🔍 Starting enhanced quick analysis with min_frequency={min_frequency}")
+        f"🔍 Starting AI-powered quick analysis with min_frequency={min_frequency}")
+
+    # Initialize Sentence Transformer model for sentiment classification
+    model = None
+    pos_proto_vec = None
+    neg_proto_vec = None
+    if SENTENCE_TRANSFORMERS_AVAILABLE:
+        try:
+            print("🔄 Loading Sentence Transformer model for sentiment analysis...")
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            # Precompute prototype embeddings once for efficiency and stability
+            positive_prototypes = [
+                "This is a positive workplace experience",
+                "Employees are happy and satisfied",
+                "Good support and clear growth",
+                "Helpful, collaborative, appreciated"
+            ]
+            negative_prototypes = [
+                "This is a negative workplace experience",
+                "Employees are unhappy and frustrated",
+                "Poor support and lack growth",
+                "Hard, challenging, not appreciated"
+            ]
+            pos_vecs = model.encode(positive_prototypes)
+            neg_vecs = model.encode(negative_prototypes)
+            # L2-normalize and average
+            def _normalize(vec):
+                norm = (vec ** 2).sum() ** 0.5
+                return vec / norm if norm > 0 else vec
+            pos_proto_vec = _normalize(np.mean(pos_vecs, axis=0))
+            neg_proto_vec = _normalize(np.mean(neg_vecs, axis=0))
+            print("✅ Sentence Transformer model loaded.")
+        except Exception as e:
+            print(f"⚠️ Failed to load Sentence Transformer: {e}")
+            model = None
 
     # Comprehensive stopwords list - much more robust
     COMPREHENSIVE_STOPWORDS = {
@@ -782,10 +816,7 @@ def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: 
         'told', 'ask', 'asked', 'know', 'knew', 'see', 'saw', 'look', 'looked', 'find', 'found',
         'get', 'got', 'give', 'gave', 'take', 'took', 'make', 'made', 'come', 'came', 'go', 'went',
 
-        # Generic workplace terms (too common to be meaningful)
-        'company', 'organization', 'workplace', 'work', 'job', 'role', 'position', 'employee', 'employees',
-        'people', 'person', 'individual', 'staff', 'member', 'members', 'team', 'teams', 'department',
-        'departments', 'manager', 'managers', 'management', 'supervisor', 'supervisors', 'boss',
+        # Generic workplace terms intentionally NOT filtered here to retain meaningful signals
 
         # Time and frequency words
         'time', 'times', 'day', 'days', 'week', 'weeks', 'month', 'months', 'year', 'years',
@@ -806,36 +837,15 @@ def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: 
         'about', 'across', 'big', 'out', 'see', 'here', 'there', 'well', 'provided', 'changes'
     }
 
-    # Enhanced sentiment classification with workplace context
-    POSITIVE_INDICATORS = {
-        'excellent', 'great', 'good', 'amazing', 'wonderful', 'fantastic', 'outstanding', 'superb',
-        'brilliant', 'awesome', 'perfect', 'love', 'like', 'enjoy', 'appreciate', 'satisfied',
-        'happy', 'pleased', 'delighted', 'thrilled', 'excited', 'motivated', 'inspired',
-        'supportive', 'helpful', 'friendly', 'positive', 'strong', 'effective',
-        'efficient', 'productive', 'successful', 'beneficial', 'valuable', 'useful', 'clear',
-        'transparent', 'open', 'flexible', 'innovative', 'creative', 'professional', 'skilled',
-        'experienced', 'knowledgeable', 'competent', 'reliable', 'trustworthy', 'respectful',
-        'growth', 'development', 'improvement', 'progress', 'advancement', 'success', 'achievement',
-        'opportunities', 'potential', 'possibilities', 'prospects', 'future', 'career', 'promotion',
-        'learning', 'education', 'skills', 'knowledge', 'expertise', 'mentoring',
-        'recognition', 'appreciation', 'valued', 'acknowledged', 'rewarded', 'praised', 'celebrated'
+    # Structured/likert artifact tokens (optionally excluded)
+    STRUCTURED_SURVEY_TERMS = {
+        'score', 'scores', 'rating', 'ratings', 'index', 'metric', 'metrics', 'measure', 'measures',
+        'positive', 'negative', 'neutral', 'agree', 'disagree', 'strongly', 'overall',
+        'section', 'question', 'questions', 'survey', 'surveys', 'scale', 'scales', 'option', 'options',
+        'select', 'selected', 'response', 'responses'
     }
-
-    NEGATIVE_INDICATORS = {
-        'bad', 'poor', 'terrible', 'awful', 'horrible', 'disappointing', 'frustrating', 'annoying',
-        'difficult', 'challenging', 'hard', 'tough', 'struggle', 'problem', 'issue', 'concern',
-        'worry', 'stress', 'pressure', 'overwhelmed', 'burned', 'exhausted', 'tired', 'lack',
-        'missing', 'absent', 'insufficient', 'inadequate', 'limited', 'restricted', 'constrained',
-        'unclear', 'confusing', 'complicated', 'complex', 'messy', 'disorganized', 'chaotic',
-        'unfair', 'biased', 'discriminatory', 'toxic', 'negative', 'hostile', 'aggressive',
-        'rude', 'disrespectful', 'unprofessional', 'incompetent', 'unreliable', 'untrustworthy',
-        'stagnant', 'stagnation', 'boring', 'monotonous', 'repetitive', 'outdated', 'obsolete',
-        'micromanagement', 'micromanaging', 'politics', 'favoritism', 'nepotism', 'corruption',
-        'burnout', 'turnover', 'quit', 'leave', 'resign', 'fire', 'fired', 'layoff', 'downsizing',
-
-        # Words that were incorrectly classified as positive
-        'nonexistent', 'insufficient', 'hard', 'impacts', 'loop', 'challenging'
-    }
+    if not include_structured_terms:
+        COMPREHENSIVE_STOPWORDS |= STRUCTURED_SURVEY_TERMS
 
     def clean_and_tokenize(text):
         """Clean text and extract meaningful tokens"""
@@ -858,43 +868,53 @@ def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: 
 
         return meaningful_words
 
-    # Neutral workplace terms that depend on context
-    NEUTRAL_WORKPLACE_TERMS = {
-        'collaboration', 'training', 'communication', 'feedback', 'meetings', 'processes',
-        'procedures', 'policies', 'systems', 'tools', 'resources', 'budget', 'planning',
-        'strategy', 'goals', 'objectives', 'targets', 'metrics', 'performance', 'results'
-    }
+    def classify_sentiment_with_ai(text_item, is_phrase=False):
+        """Classify sentiment using cosine similarity to prototype embeddings."""
+        if not model or pos_proto_vec is None or neg_proto_vec is None:
+            return classify_sentiment_fallback(text_item, is_phrase)
 
-    def classify_word_sentiment(word):
-        """Classify individual word sentiment"""
-        if word in NEGATIVE_INDICATORS:
-            return 'negative'
-        elif word in POSITIVE_INDICATORS:
-            return 'positive'
-        elif word in NEUTRAL_WORKPLACE_TERMS:
-            return 'neutral'  # These need context to determine sentiment
-        else:
+        try:
+            emb = model.encode([text_item])[0]
+            # L2 normalize
+            norm = (emb ** 2).sum() ** 0.5
+            emb = emb / norm if norm > 0 else emb
+            pos_sim = float(np.dot(emb, pos_proto_vec))
+            neg_sim = float(np.dot(emb, neg_proto_vec))
+            margin = 0.02  # small margin to avoid noise
+            if pos_sim > neg_sim + margin:
+                return 'positive'
+            if neg_sim > pos_sim + margin:
+                return 'negative'
             return 'neutral'
+        except Exception as e:
+            print(f"⚠️ AI classification failed for '{text_item}': {e}")
+            return classify_sentiment_fallback(text_item, is_phrase)
 
-    def classify_phrase_sentiment(phrase):
-        """Classify phrase sentiment based on constituent words and context"""
-        words = phrase.split()
-        positive_count = sum(
-            1 for word in words if word in POSITIVE_INDICATORS)
-        negative_count = sum(
-            1 for word in words if word in NEGATIVE_INDICATORS)
-        neutral_workplace_count = sum(
-            1 for word in words if word in NEUTRAL_WORKPLACE_TERMS)
+    def classify_sentiment_fallback(text_item, is_phrase=False):
+        """Fallback sentiment classification using basic keyword matching"""
+        # Basic positive/negative indicators for fallback
+        positive_indicators = {
+            'excellent', 'great', 'good', 'amazing', 'wonderful', 'fantastic', 'outstanding',
+            'supportive', 'helpful', 'clear', 'growth', 'development', 'opportunities',
+            'recognition', 'appreciation', 'valued', 'satisfied', 'happy', 'love'
+        }
 
-        # If phrase contains negative words, it's negative
-        if negative_count > 0:
+        negative_indicators = {
+            'bad', 'poor', 'terrible', 'awful', 'disappointing', 'frustrating',
+            'difficult', 'challenging', 'hard', 'lack', 'insufficient', 'inadequate',
+            'nonexistent', 'unclear', 'confusing', 'stress', 'overwhelmed', 'toxic'
+        }
+
+        text_lower = text_item.lower()
+        words = set(text_lower.split())
+
+        has_positive = bool(words & positive_indicators)
+        has_negative = bool(words & negative_indicators)
+
+        if has_negative:
             return 'negative'
-        # If phrase contains positive words and no negative, it's positive
-        elif positive_count > 0:
+        elif has_positive:
             return 'positive'
-        # If phrase is only neutral workplace terms, skip it (needs more context)
-        elif neutral_workplace_count == len(words):
-            return 'neutral'
         else:
             return 'neutral'
 
@@ -904,37 +924,84 @@ def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: 
     positive_bigrams = Counter()
     negative_bigrams = Counter()
 
-    # Process each response
+    # First pass: tokenize and count raw frequencies only (fast)
     processed_responses = 0
+    raw_unigram_counts = Counter()
+    raw_bigram_counts = Counter()
+
     for text in response_texts:
         if not text or not text.strip():
             continue
 
-        # Clean and tokenize
         words = clean_and_tokenize(text)
-        if len(words) < 2:  # Skip responses with too few meaningful words
+        if len(words) < 1:
             continue
 
         processed_responses += 1
 
-        # Extract unigrams (single words) with individual word sentiment classification
-        for word in words:
-            word_sentiment = classify_word_sentiment(word)
-            if word_sentiment == 'positive':
-                positive_unigrams[word] += 1
-            elif word_sentiment == 'negative':
-                negative_unigrams[word] += 1
-            # Skip neutral words
+        # Count unigrams
+        raw_unigram_counts.update(words)
 
-        # Extract bigrams (two-word phrases) with phrase sentiment classification
-        for i in range(len(words) - 1):
-            bigram = f"{words[i]} {words[i+1]}"
-            phrase_sentiment = classify_phrase_sentiment(bigram)
-            if phrase_sentiment == 'positive':
-                positive_bigrams[bigram] += 1
-            elif phrase_sentiment == 'negative':
-                negative_bigrams[bigram] += 1
-            # Skip neutral phrases
+        # Count bigrams
+        if len(words) >= 2:
+            for i in range(len(words) - 1):
+                raw_bigram_counts[f"{words[i]} {words[i+1]}"] += 1
+
+    # Filter by min_frequency before any embedding/classification
+    candidate_unigrams = [w for w, c in raw_unigram_counts.items() if c >= min_frequency]
+    candidate_bigrams = [p for p, c in raw_bigram_counts.items() if c >= min_frequency]
+
+    # Classify candidates; batch encode when model is available
+    def classify_candidates(candidates, is_phrase):
+        results = {}
+        if not candidates:
+            return results
+        if model and pos_proto_vec is not None and neg_proto_vec is not None:
+            try:
+                # Batch encode
+                embs = model.encode(candidates, batch_size=128, show_progress_bar=False)
+                # L2 normalize
+                norms = np.linalg.norm(embs, axis=1, keepdims=True)
+                norms[norms == 0] = 1.0
+                embs = embs / norms
+                pos_sims = (embs @ pos_proto_vec)
+                neg_sims = (embs @ neg_proto_vec)
+                margin = 0.02
+                for idx, item in enumerate(candidates):
+                    ps = float(pos_sims[idx])
+                    ns = float(neg_sims[idx])
+                    if ps > ns + margin:
+                        results[item] = 'positive'
+                    elif ns > ps + margin:
+                        results[item] = 'negative'
+                    else:
+                        results[item] = 'neutral'
+                return results
+            except Exception:
+                # Fallback to per-item
+                pass
+        # Fallback path (no model or batch failed)
+        for item in candidates:
+            results[item] = classify_sentiment_with_ai(item, is_phrase=is_phrase)
+        return results
+
+    unigram_labels = classify_candidates(candidate_unigrams, is_phrase=False)
+    bigram_labels = classify_candidates(candidate_bigrams, is_phrase=True)
+
+    # Accumulate counts into positive/negative buckets using raw frequencies
+    for word, label in unigram_labels.items():
+        count = raw_unigram_counts[word]
+        if label == 'positive':
+            positive_unigrams[word] = count
+        elif label == 'negative':
+            negative_unigrams[word] = count
+
+    for phrase, label in bigram_labels.items():
+        count = raw_bigram_counts[phrase]
+        if label == 'positive':
+            positive_bigrams[phrase] = count
+        elif label == 'negative':
+            negative_bigrams[phrase] = count
 
     def format_results(unigrams, bigrams, min_freq):
         """Filter by frequency and format results"""
@@ -970,7 +1037,8 @@ def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: 
             "processed_responses": processed_responses,
             "min_frequency_threshold": min_frequency,
             "stopwords_filtered": len(COMPREHENSIVE_STOPWORDS),
-            "analysis_type": "unigrams_and_bigrams"
+            "analysis_type": "unigrams_and_bigrams",
+            "sentiment_method": "sentence_transformers" if model else "fallback_keywords"
         },
         "positive_analysis": positive_results,
         "negative_analysis": negative_results,
@@ -988,8 +1056,6 @@ def enhanced_quick_wordcloud_analysis(response_texts: List[str], min_frequency: 
         f"✅ Phrases found: {positive_results['total_phrases']} positive, {negative_results['total_phrases']} negative")
 
     return result
-
-
 def analyze_survey_wordcloud(survey_responses: Union[List[str], List[Dict]],
                              include_phrases: bool = True,
                              include_clustering: bool = True) -> Dict[str, Any]:

@@ -19,7 +19,7 @@ from openai import OpenAI
 import json
 import random
 from services.na_handler import NAHandler
-from word_cloud import analyze_survey_wordcloud, enhanced_quick_wordcloud_analysis
+from word_cloud import dynamic_quick_wordcloud_analysis
 
 # Load environment variables
 load_dotenv()
@@ -2079,62 +2079,16 @@ async def executive_summary():
 #             status_code=500, detail=f"Error analyzing keywords and word cloud: {str(e)}")
 
 
-@app.get("/wordcloud-analysis")
-async def enhanced_wordcloud_analysis(
-    include_phrases: bool = Query(
-        True, description="Extract phrases (True) or keywords only (False)"),
-    include_clustering: bool = Query(
-        True, description="Perform semantic clustering")
-):
-    """
-    Enhanced Word Cloud Analysis
-
-    Features:
-    - Phrase-level extraction (e.g., "collaboration across teams challenging")
-    - Semantic clustering of similar terms
-    - Workplace category analysis
-    - Built-in sentiment analysis
-
-    Returns comprehensive word cloud data with:
-    - Positive/Negative phrase clouds with counts
-    - Semantic clusters grouped by similarity
-    - Category breakdowns (teamwork, growth, culture, etc.)
-    - Statistical analysis and insights
-    """
-    global survey_analyzer
-
-    if not survey_analyzer or not survey_analyzer.responses:
-        raise HTTPException(
-            status_code=400, detail="No survey data available. Please upload data first.")
-
-    try:
-        result = analyze_survey_wordcloud(
-            survey_analyzer.responses,
-            include_phrases=include_phrases,
-            include_clustering=include_clustering
-        )
-
-        # Add integration metadata
-        result["integration_info"] = {
-            "survey_type": survey_analyzer.survey_type,
-            "total_survey_responses": len(survey_analyzer.responses),
-            "analysis_mode": "phrases" if include_phrases else "keywords",
-            "clustering_enabled": include_clustering
-        }
-
-        return result
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error in enhanced word cloud analysis: {str(e)}"
-        )
-
-
 @app.get("/wordcloud-quick")
 async def quick_wordcloud(
     min_frequency: int = Query(
-        10, description="Minimum frequency threshold for words/phrases (default: 10)")
+        10, description="Minimum frequency threshold for words/phrases (default: 10)"),
+    include_structured_terms: bool = Query(
+        False, description="Include structured survey tokens like score/agree/positive in analysis"),
+    free_text_only: bool = Query(
+        True, description="Only analyze fields that look like free text (recommended)"),
+    free_text_min_chars: int = Query(
+        20, description="Minimum length to treat a field as free text when free_text_only is true")
 ):
     """
     Enhanced Quick Word Cloud Analysis
@@ -2158,14 +2112,30 @@ async def quick_wordcloud(
         raise HTTPException(status_code=400, detail="No survey data available")
 
     try:
-        # Extract all response texts
+        # Extract all response texts with optional free-text filtering
         all_texts = []
-        for resp in survey_analyzer.responses:
-            combined_text = " ".join(resp.responses.values())
-            all_texts.append(combined_text)
+        if free_text_only:
+            for resp in survey_analyzer.responses:
+                parts = []
+                for v in resp.responses.values():
+                    if not isinstance(v, str):
+                        continue
+                    txt = v.strip()
+                    if len(txt) >= free_text_min_chars and (" " in txt or any(ch in txt for ch in ".,!?:;")):
+                        parts.append(txt)
+                if parts:
+                    all_texts.append(" ".join(parts))
+        else:
+            for resp in survey_analyzer.responses:
+                combined_text = " ".join([v for v in resp.responses.values() if isinstance(v, str)])
+                all_texts.append(combined_text)
 
-        # Perform enhanced word and phrase analysis
-        result = enhanced_quick_wordcloud_analysis(all_texts, min_frequency)
+        # Perform enhanced word and phrase analysis (Sentence Transformers-backed)
+        result = dynamic_quick_wordcloud_analysis(
+            all_texts,
+            min_frequency=min_frequency,
+            include_structured_terms=include_structured_terms
+        )
         return result
 
     except Exception as e:
